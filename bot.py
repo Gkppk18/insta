@@ -8,7 +8,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # The public Cobalt API endpoint
-COBALT_API_URL = "https://cobalt-api-production-4006.up.railway.app/"
+COBALT_API_URL = "https://cobalt.api .timelessnesses.me/"
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
