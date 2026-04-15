@@ -1,64 +1,68 @@
 import os
-import yt_dlp
-from telegram import Update
-from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
+import telebot
+import requests
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# Fetches your Telegram Bot Token from Railway Environment Variables
+# If running locally for testing, replace the os.getenv with your actual token string.
+BOT_TOKEN = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
+bot = telebot.TeleBot(BOT_TOKEN)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 Welcome to Video Downloader Bot!\n\n"
-        "Send me any YouTube or Instagram video link and I'll download it for you.\n\n"
-        "Supported:\n"
-        "✅ YouTube\n"
-        "✅ Instagram Reels & Posts"
+# The public Cobalt API endpoint
+COBALT_API_URL = "https://api.cobalt.tools/"
+
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    welcome_text = (
+        "👋 Welcome! Send me a link from YouTube, Instagram, TikTok, or Twitter, "
+        "and I will fetch the video for you."
     )
+    bot.reply_to(message, welcome_text)
 
-async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
-
-    if "youtube.com" not in url and "youtu.be" not in url and "instagram.com" not in url:
-        await update.message.reply_text("❌ Please send a valid YouTube or Instagram link.")
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    url = message.text.strip()
+    
+    # Basic validation to ensure the user sent a link
+    if not url.startswith("http"):
+        bot.reply_to(message, "❌ Please send a valid link (starting with http:// or https://).")
         return
-
-    await update.message.reply_text("⏳ Downloading your video, please wait...")
-
-    os.makedirs("downloads", exist_ok=True)
-    output_path = f"downloads/{update.message.message_id}.mp4"
-
-    ydl_opts = {
-        "outtmpl": output_path,
-        "format": "best[ext=mp4]/best",
-        "quiet": True,
-        "noplaylist": True,
+        
+    processing_msg = bot.reply_to(message, "⏳ Processing link via Cobalt... Please wait.")
+    
+    # Cobalt API requires these specific headers
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
     }
-
+    
+    payload = {
+        "url": url
+    }
+    
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-
-        file_size = os.path.getsize(output_path)
-        if file_size > 50 * 1024 * 1024:
-            await update.message.reply_text("❌ Video too large (over 50MB). Try a shorter video.")
-            os.remove(output_path)
-            return
-
-        with open(output_path, "rb") as video_file:
-            await update.message.reply_video(video=video_file, caption="✅ Here is your video!")
-
+        # Send the link to Cobalt
+        response = requests.post(COBALT_API_URL, headers=headers, json=payload)
+        data = response.json()
+        
+        # If Cobalt successfully parsed the video, it returns a direct 'url'
+        if "url" in data:
+            video_url = data["url"]
+            bot.edit_message_text("⬇️ Sending video...", chat_id=message.chat.id, message_id=processing_msg.message_id)
+            
+            # Pass the direct URL to Telegram. Telegram servers will download and send it.
+            bot.send_video(message.chat.id, video_url, reply_to_message_id=message.message_id)
+            bot.delete_message(message.chat.id, processing_msg.message_id)
+        else:
+            # If the API returns an error (e.g., private video, invalid link)
+            error_status = data.get('status', 'Unknown error')
+            bot.edit_message_text(f"❌ Cobalt failed to process this link. Status: {error_status}", 
+                                  chat_id=message.chat.id, message_id=processing_msg.message_id)
+            
     except Exception as e:
-        await update.message.reply_text(f"❌ Failed to download.\nMake sure the link is public.\n\nError: {str(e)}")
-
-    finally:
-        if os.path.exists(output_path):
-            os.remove(output_path)
-
-def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
-    print("Bot is running...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+        # Catching network errors or Telegram API limits
+        bot.edit_message_text(f"❌ An error occurred: {str(e)}\n\n(Note: Telegram bots have a 20MB file limit for URL uploads)", 
+                              chat_id=message.chat.id, message_id=processing_msg.message_id)
 
 if __name__ == "__main__":
-    main()
+    print("Bot is running and polling for messages...")
+    bot.infinity_polling()
