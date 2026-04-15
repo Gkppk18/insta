@@ -41,7 +41,7 @@ def handle_message(message):
     
     try:
         # Send the link to Cobalt
-        response = requests.post(COBALT_API_URL, headers=headers, json=payload)
+      response = requests.post(COBALT_API_URL, headers=headers, json=payload, verify=False)
         data = response.json()
         
         # If Cobalt successfully parsed the video, it returns a direct 'url'
