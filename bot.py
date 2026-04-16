@@ -9,7 +9,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 BOT_TOKEN = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
 bot = telebot.TeleBot(BOT_TOKEN)
 
-COBALT_API_URL = "https://cobalt.api.timelessnesses.me/"
+COBALT_API_URL = "https://melon.clxxped.lol/"
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
